@@ -48,7 +48,7 @@ type
     FSetupJWTClaims: TJWTClaimsSetup;
     FSecret: string;
     FLeewaySeconds: Cardinal;
-    FLoginURLSegment: string;
+    FLoginURLSegment: String;
   protected
     procedure InternalRender(
       AJSONValue: TJSONValue;
@@ -102,15 +102,15 @@ uses System.NetEncoding, System.DateUtils;
 { TMVCJWTAuthenticationMiddleware }
 
 constructor TMVCJWTAuthenticationMiddleware.Create(AAuthenticationHandler: IMVCAuthenticationHandler;
-  AConfigClaims: TJWTClaimsSetup;
-  ASecret: string = 'D3lph1MVCFram3w0rk';
-  ALoginURLSegment: string = '/login';
-  AClaimsToCheck: TJWTCheckableClaims = [
-  TJWTCheckableClaim.ExpirationTime,
-  TJWTCheckableClaim.NotBefore,
-  TJWTCheckableClaim.IssuedAt
-  ];
-  ALeewaySeconds: Cardinal = 300);
+      AConfigClaims: TJWTClaimsSetup;
+      ASecret: string = 'D3lph1MVCFram3w0rk';
+      ALoginURLSegment: string = '/login';
+      AClaimsToCheck: TJWTCheckableClaims = [
+      TJWTCheckableClaim.ExpirationTime,
+      TJWTCheckableClaim.NotBefore,
+      TJWTCheckableClaim.IssuedAt
+      ];
+      ALeewaySeconds: Cardinal = 300);
 begin
   inherited Create;
   FAuthenticationHandler := AAuthenticationHandler;
@@ -195,49 +195,43 @@ begin
     end;
 
     // check the jwt
-    // if not JWTValue.IsValidToken(AuthToken, ErrorMsg) then
-    // begin
-    // RenderError(HTTP_STATUS.Unauthorized, ErrorMsg, AContext);
-    // AHandled := True;
-    // end
-    // else
-
-    if not JWTValue.LoadToken(AuthToken, ErrorMsg) then
+    if not JWTValue.IsValidToken(AuthToken, ErrorMsg) then
     begin
       RenderError(HTTP_STATUS.Unauthorized, ErrorMsg, AContext);
-      AHandled := True;
-      Exit;
-    end;
-
-    if JWTValue.CustomClaims['username'].IsEmpty then
-    begin
-      RenderError(HTTP_STATUS.Unauthorized, 'Invalid Token, Authentication Required', AContext);
       AHandled := True;
     end
     else
     begin
-      IsAuthorized := False;
-
-      AContext.LoggedUser.UserName := JWTValue.CustomClaims['username'];
-      AContext.LoggedUser.Roles.AddRange(JWTValue.CustomClaims['roles'].Split([',']));
-      AContext.LoggedUser.LoggedSince := JWTValue.Claims.IssuedAt;
-      AContext.LoggedUser.CustomData := JWTValue.CustomClaims.AsCustomData;
-
-      FAuthenticationHandler.OnAuthorization(AContext.LoggedUser.Roles, AControllerQualifiedClassName, AActionName, IsAuthorized);
-
-      if IsAuthorized then
+      JWTValue.LoadToken(AuthToken);
+      if JWTValue.CustomClaims['username'].IsEmpty then
       begin
-        if JWTValue.LiveValidityWindowInSeconds > 0 then
-        begin
-          JWTValue.Claims.ExpirationTime := Now + JWTValue.LiveValidityWindowInSeconds * OneSecond;
-          AContext.Response.SetCustomHeader('Authentication', 'bearer ' + JWTValue.GetToken);
-        end;
-        AHandled := False
+        RenderError(HTTP_STATUS.Unauthorized, 'Invalid Token, Authentication Required', AContext);
+        AHandled := True;
       end
       else
       begin
-        RenderError(HTTP_STATUS.Forbidden, 'Authorization Forbidden', AContext);
-        AHandled := True;
+        IsAuthorized := False;
+
+        AContext.LoggedUser.UserName := JWTValue.CustomClaims['username'];
+        AContext.LoggedUser.Roles.AddRange(JWTValue.CustomClaims['roles'].Split([',']));
+        AContext.LoggedUser.LoggedSince := JWTValue.Claims.IssuedAt;
+
+        FAuthenticationHandler.OnAuthorization(AContext.LoggedUser.Roles, AControllerQualifiedClassName, AActionName, IsAuthorized);
+
+        if IsAuthorized then
+        begin
+          if JWTValue.LiveValidityWindowInSeconds > 0 then
+          begin
+            JWTValue.Claims.ExpirationTime := Now + JWTValue.LiveValidityWindowInSeconds * OneSecond;
+            AContext.Response.SetCustomHeader('Authentication', 'bearer ' + JWTValue.GetToken);
+          end;
+          AHandled := False
+        end
+        else
+        begin
+          RenderError(HTTP_STATUS.Forbidden, 'Authorization Forbidden', AContext);
+          AHandled := True;
+        end;
       end;
     end;
   finally
@@ -254,7 +248,6 @@ var
   SessionData: TSessionData;
   IsValid: Boolean;
   JWTValue: TJWT;
-  lCustomPair: TPair<string, string>;
 begin
   if SameText(AContext.Request.PathInfo, FLoginURLSegment) and (AContext.Request.HTTPMethod = httpPOST) then
   begin
@@ -302,18 +295,6 @@ begin
             AContext.LoggedUser.UserName := JWTValue.CustomClaims['username'];
             AContext.LoggedUser.LoggedSince := JWTValue.Claims.IssuedAt;
             AContext.LoggedUser.Realm := JWTValue.Claims.Subject;
-
-            if SessionData.Count > 0 then
-            begin
-              AContext.LoggedUser.CustomData := TMVCCustomData.Create;
-              for lCustomPair in SessionData do
-              begin
-                AContext.LoggedUser.CustomData.AddOrSetValue(lCustomPair.Key, lCustomPair.Value);
-                if not JWTValue.CustomClaims.Items[lCustomPair.Key].IsEmpty then
-                  raise EMVCJWTException.CreateFmt('JWT Error: "%s" is a reserved key name', [lCustomPair.Key]);
-                JWTValue.CustomClaims.Items[lCustomPair.Key] := lCustomPair.Value;
-              end;
-            end;
 
             InternalRender(
               TJSONObject.Create(TJSONPair.Create('token', JWTValue.GetToken)),

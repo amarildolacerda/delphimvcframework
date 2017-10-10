@@ -39,7 +39,7 @@ const
   LOGGERPRO_TAG = 'dmvcframework';
 
 type
-  TLogLevel = (levDebug = 0, levNormal = 1, levWarning = 2, levError = 3, levException = 4);
+  TLogLevel = (levDebug = 0, levNormal = 1, levWar = 2, levError = 3, levException = 4);
 
 function LogLevelAsString(ALogLevel: TLogLevel): string;
 procedure Log(AMessage: string); overload;
@@ -50,6 +50,8 @@ procedure LogE(AMessage: string);
 procedure Log(LogLevel: TLogLevel; const AMessage: string); overload;
 procedure LogEnterMethod(const AMethodName: string);
 procedure LogExitMethod(const AMethodName: string);
+procedure LogException(const AException: Exception; const AMessage: string = '');
+procedure LogEx(AException: Exception; AMessage: string = ''); deprecated 'Use LogException or Log.Error';
 
 // direct access to loggerpro logger
 function Log: ILogWriter; overload;
@@ -103,7 +105,7 @@ begin
   case ALogLevel of
     levNormal:
       Result := ''; // normal is '' because is more readable
-    levWarning:
+    levWar:
       Result := 'WARNING';
     levError:
       Result := 'ERROR';
@@ -112,6 +114,11 @@ begin
   else
     Result := 'UNKNOWN';
   end;
+end;
+
+procedure LogEx(AException: Exception; AMessage: string = '');
+begin
+  LogEx(AException, AMessage);
 end;
 
 procedure LogW(AMessage: string);
@@ -124,13 +131,13 @@ begin
   Log.Error(AMessage, LOGGERPRO_TAG);
 end;
 
-// procedure LogException(
-// const AException: Exception;
-// const AMessage: string);
-// begin
-// Log.Error(Format('[%s] %s (Custom message: "%s")', [AException.ClassName,
-// AException.Message, AMessage]), LOGGERPRO_TAG);
-// end;
+procedure LogException(
+  const AException: Exception;
+  const AMessage: string);
+begin
+  Log.Error(Format('[%s] %s (Custom message: "%s")', [AException.ClassName,
+    AException.Message, AMessage]), LOGGERPRO_TAG);
+end;
 
 procedure LogEnterMethod(const AMethodName: string);
 begin

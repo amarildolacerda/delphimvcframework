@@ -47,7 +47,7 @@ uses
 
   {$ENDIF}
 
-  MVCFramework.Commons, Data.DB;
+  MVCFramework.Commons;
 
 type
 
@@ -63,10 +63,22 @@ type
 
   TMVCSerializationAction = TProc<TObject, TMVCStringDictionary>;
 
-  EMVCSerializationException = class(EMVCException)
+  EMVCSerializationException = class(Exception)
+  private
+    { private declarations }
+  protected
+    { protected declarations }
+  public
+    { public declarations }
   end;
 
-  EMVCDeserializationException = class(EMVCException)
+  EMVCDeserializationException = class(Exception)
+  private
+    { private declarations }
+  protected
+    { protected declarations }
+  public
+    { public declarations }
   end;
 
   MVCValueAsTypeAttribute = class(TCustomAttribute)
@@ -202,11 +214,6 @@ function DateTimeToISOTimeStamp(const ADateTime: TDateTime): string;
 function DateToISODate(const ADate: TDateTime): string;
 function TimeToISOTime(const ATime: TTime): string;
 
-/// <summary>
-/// Supports ISO8601 in the following formats:
-/// yyyy-mm-ddThh:nn:ss
-/// yyyy-mm-ddThh:nn:ss.000Z
-/// </summary>
 function ISOTimeStampToDateTime(const ADateTime: string): TDateTime;
 function ISODateToDate(const ADate: string): TDate;
 function ISOTimeToTime(const ATime: string): TTime;
@@ -218,10 +225,11 @@ const
 implementation
 
 function DateTimeToISOTimeStamp(const ADateTime: TDateTime): string;
+var
+  fs: TFormatSettings;
 begin
-  // fs.TimeSeparator := ':';
-  Result := DateToISO8601(ADateTime, true)
-  // Result := FormatDateTime('yyyy-mm-dd hh:nn:ss', ADateTime, fs);
+  fs.TimeSeparator := ':';
+  Result := FormatDateTime('yyyy-mm-dd hh:nn:ss', ADateTime, fs);
 end;
 
 function DateToISODate(const ADate: TDateTime): string;
@@ -238,20 +246,9 @@ begin
 end;
 
 function ISOTimeStampToDateTime(const ADateTime: string): TDateTime;
-var
-  lDateTime: string;
 begin
-  lDateTime := ADateTime;
-  if lDateTime.Length < 19 then
-    raise Exception.CreateFmt('Invalid parameter "%s". Hint: DateTime parameters must be formatted in ISO8601 (e.g. 2010-10-12T10:12:23)', [ADateTime]);
-
-  if lDateTime.Chars[10] = ' ' then
-  begin
-    lDateTime := lDateTime.Substring(0, 10) + 'T' + lDateTime.Substring(11);
-  end;
-  Result := ISO8601ToDate(lDateTime, true);
-  // Result := EncodeDateTime(StrToInt(Copy(ADateTime, 1, 4)), StrToInt(Copy(ADateTime, 6, 2)), StrToInt(Copy(ADateTime, 9, 2)),
-  // StrToInt(Copy(ADateTime, 12, 2)), StrToInt(Copy(ADateTime, 15, 2)), StrToInt(Copy(ADateTime, 18, 2)), 0);
+  Result := EncodeDateTime(StrToInt(Copy(ADateTime, 1, 4)), StrToInt(Copy(ADateTime, 6, 2)), StrToInt(Copy(ADateTime, 9, 2)),
+    StrToInt(Copy(ADateTime, 12, 2)), StrToInt(Copy(ADateTime, 15, 2)), StrToInt(Copy(ADateTime, 18, 2)), 0);
 end;
 
 function ISODateToDate(const ADate: string): TDate;
@@ -607,9 +604,5 @@ procedure MVCColumnAttribute.SetIsPK(const Value: boolean);
 begin
   FIsPK := Value;
 end;
-
-{ TDataSetHelper }
-
-{ TDataSetHelper }
 
 end.

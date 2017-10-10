@@ -196,12 +196,12 @@ type
     function CheckIssuedAt(Payload: TJSONObject; out Error: string): Boolean;
     procedure SetLiveValidityWindowInSeconds(const Value: Cardinal);
     function GetLiveValidityWindowInSeconds: Cardinal;
-    function IsValidToken(const Token: string; out Header, Payload: TJSONObject; out Error: string): Boolean;
   public
     constructor Create(const SecretKey: string; const ALeewaySeconds: Cardinal = 300); virtual;
     destructor Destroy; override;
     function GetToken: string;
-    function LoadToken(const Token: string; out Error: string): Boolean;
+    function IsValidToken(const Token: string; out Error: string): Boolean;
+    procedure LoadToken(const Token: string);
     property Claims: TJWTRegisteredClaims read FRegisteredClaims;
     property CustomClaims: TJWTCustomClaims read FCustomClaims;
     property HMACAlgorithm: string read FHMACAlgorithm write SetHMACAlgorithm;
@@ -449,7 +449,7 @@ begin
   FSecretKey := SecretKey;
   FRegisteredClaims := TJWTRegisteredClaims.Create;
   FCustomClaims := TJWTCustomClaims.Create;
-  FHMACAlgorithm := HMAC_HS512;
+  FHMACAlgorithm := 'HS256';
   FLeewaySeconds := ALeewaySeconds;
   FRegClaimsToChecks := [TJWTCheckableClaim.ExpirationTime, TJWTCheckableClaim.NotBefore,
     TJWTCheckableClaim.IssuedAt];
@@ -513,11 +513,13 @@ begin
   end;
 end;
 
-function TJWT.IsValidToken(const Token: string; out Header, Payload: TJSONObject; out Error: string): Boolean;
+function TJWT.IsValidToken(const Token: string; out Error: string): Boolean;
 var
   lPieces: TArray<string>;
+  lJHeader: TJSONObject;
   lJAlg: TJSONString;
   lAlgName: string;
+  lJPayload: TJSONObject;
 begin
   Error := '';
   lPieces := Token.Split(['.']);
@@ -527,23 +529,23 @@ begin
     Exit(False);
   end;
 
-  Header := TJSONObject.ParseJSONValue(URLSafeB64Decode(lPieces[0])) as TJSONObject;
+  lJHeader := TJSONObject.ParseJSONValue(URLSafeB64Decode(lPieces[0])) as TJSONObject;
   try
-    if not Assigned(Header) then
+    if not Assigned(lJHeader) then
     begin
       Error := 'Invalid Token';
       Exit(False);
     end;
 
-    Payload := TJSONObject.ParseJSONValue(URLSafeB64Decode(lPieces[1])) as TJSONObject;
+    lJPayload := TJSONObject.ParseJSONValue(URLSafeB64Decode(lPieces[1])) as TJSONObject;
     try
-      if not Assigned(Payload) then
+      if not Assigned(lJPayload) then
       begin
         Error := 'Invalid Token';
         Exit(False);
       end;
 
-      if not Header.TryGetValue<TJSONString>('alg', lJAlg) then
+      if not lJHeader.TryGetValue<TJSONString>('alg', lJAlg) then
       begin
         Error := 'Invalid Token';
         Exit(False);
@@ -563,7 +565,7 @@ begin
       begin
         if TJWTCheckableClaim.ExpirationTime in RegClaimsToChecks then
         begin
-          if not CheckExpirationTime(Payload, Error) then
+          if not CheckExpirationTime(lJPayload, Error) then
           begin
             Exit(False);
           end;
@@ -572,7 +574,7 @@ begin
 
         if TJWTCheckableClaim.NotBefore in RegClaimsToChecks then
         begin
-          if not CheckNotBefore(Payload, Error) then
+          if not CheckNotBefore(lJPayload, Error) then
           begin
             Exit(False);
           end;
@@ -580,7 +582,7 @@ begin
 
         if TJWTCheckableClaim.IssuedAt in RegClaimsToChecks then
         begin
-          if not CheckIssuedAt(Payload, Error) then
+          if not CheckIssuedAt(lJPayload, Error) then
           begin
             Exit(False);
           end;
@@ -588,16 +590,14 @@ begin
       end;
 
     finally
-      if not Result then
-        FreeAndNil(Payload);
+      lJPayload.Free;
     end;
   finally
-    if not Result then
-      FreeAndNil(Header);
+    lJHeader.Free;
   end;
 end;
 
-function TJWT.LoadToken(const Token: string; out Error: string): Boolean;
+procedure TJWT.LoadToken(const Token: string);
 var
   lPieces: TArray<string>;
   lJHeader: TJSONObject;
@@ -608,46 +608,49 @@ var
   j: Integer;
   lIsRegistered: Boolean;
   lValue: string;
+  lError: string;
 begin
-  Result := IsValidToken(Token, lJHeader, lJPayload, Error);
+  if not IsValidToken(Token, lError) then
+    raise EMVCJWTException.Create(lError);
+
+  lPieces := Token.Split(['.']);
+  lJHeader := TJSONObject.ParseJSONValue(URLSafeB64Decode(lPieces[0])) as TJSONObject;
   try
-    if not Result then
-      Exit(False);
+    lJPayload := TJSONObject.ParseJSONValue(URLSafeB64Decode(lPieces[1])) as TJSONObject;
+    try
+      // loading data from token into self
+      FHMACAlgorithm := lJHeader.Values['alg'].Value;
+      // registered claims
+      FRegisteredClaims.FClaims.Clear;
 
-    lPieces := Token.Split(['.']);
-    // loading data from token into self
-    FHMACAlgorithm := lJHeader.Values['alg'].Value;
-    // registered claims
-    FRegisteredClaims.FClaims.Clear;
-
-    // custom claims
-    FCustomClaims.FClaims.Clear;
-    for i := 0 to lJPayload.Count - 1 do
-    begin
-      lIsRegistered := False;
-      lJPair := lJPayload.Pairs[i];
-      lName := lJPair.JsonString.Value;
-      lValue := lJPair.JsonValue.Value;
-
-      // if is a registered claim, load it in the proper dictionary...
-      for j := 0 to high(TJWTRegisteredClaimNames.Names) do
+      // custom claims
+      FCustomClaims.FClaims.Clear;
+      for i := 0 to lJPayload.Count - 1 do
       begin
-        if lName = TJWTRegisteredClaimNames.Names[j] then
-        begin
-          FRegisteredClaims.FClaims.AddOrSetValue(lName, lValue);
-          lIsRegistered := True;
-          Break;
-        end;
-      end;
-      if not lIsRegistered then
-        FCustomClaims.FClaims.AddOrSetValue(lName, lValue);
-    end;
+        lIsRegistered := False;
+        lJPair := lJPayload.Pairs[i];
+        lName := lJPair.JsonString.Value;
+        lValue := lJPair.JsonValue.Value;
 
-    FCustomClaims.FClaims.TrimExcess;
-    FRegisteredClaims.FClaims.TrimExcess;
+        // if is a registered claim, load it in the proper dictionary...
+        for j := 0 to high(TJWTRegisteredClaimNames.Names) do
+        begin
+          if lName = TJWTRegisteredClaimNames.Names[j] then
+          begin
+            FRegisteredClaims.FClaims.AddOrSetValue(lName, lValue);
+            lIsRegistered := True;
+            Break;
+          end;
+        end;
+        if not lIsRegistered then
+          FCustomClaims.FClaims.AddOrSetValue(lName, lValue);
+      end;
+
+    finally
+      lJPayload.Free;
+    end;
   finally
-    FreeAndNil(lJHeader);
-    FreeAndNil(lJPayload);
+    lJHeader.Free;
   end;
 end;
 

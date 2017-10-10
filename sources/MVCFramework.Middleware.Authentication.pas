@@ -275,65 +275,61 @@ begin
   end;
 
   Jo := TJSONObject.ParseJSONValue(AContext.Request.Body) as TJSONObject;
+  if not Assigned(Jo) then
+  begin
+    AHandled := True;
+    SendResponse(AContext, AHandled, HTTP_STATUS.BadRequest);
+    Exit;
+  end;
+
+  UserName := EmptyStr;
+  if (Jo.Get('username') <> nil) then
+    UserName := Jo.Get('username').JsonValue.Value;
+
+  Password := EmptyStr;
+  if (Jo.Get('password') <> nil) then
+    Password := Jo.Get('password').JsonValue.Value;
+
+  if UserName.IsEmpty or Password.IsEmpty then
+  begin
+    AHandled := True;
+    SendResponse(AContext, AHandled);
+    Exit;
+  end;
+
+  RolesList := TList<string>.Create;
   try
-    if not Assigned(Jo) then
-    begin
-      AHandled := True;
-      SendResponse(AContext, AHandled, HTTP_STATUS.BadRequest);
-      Exit;
-    end;
-
-    UserName := EmptyStr;
-    if (Jo.Get('username') <> nil) then
-      UserName := Jo.Get('username').JsonValue.Value;
-
-    Password := EmptyStr;
-    if (Jo.Get('password') <> nil) then
-      Password := Jo.Get('password').JsonValue.Value;
-
-    if UserName.IsEmpty or Password.IsEmpty then
-    begin
-      AHandled := True;
-      SendResponse(AContext, AHandled);
-      Exit;
-    end;
-
-    RolesList := TList<string>.Create;
+    SessionData := TSessionData.Create;
     try
-      SessionData := TSessionData.Create;
-      try
-        IsValid := False;
-        FAuthenticationHandler.OnAuthentication(UserName, Password, RolesList, IsValid, SessionData);
-        if not IsValid then
-        begin
-          SendResponse(AContext, AHandled);
-          Exit;
-        end;
-
-        AContext.LoggedUser.Roles.AddRange(RolesList);
-        AContext.LoggedUser.UserName := UserName;
-        AContext.LoggedUser.LoggedSince := Now;
-        AContext.LoggedUser.Realm := 'custom';
-        AContext.LoggedUser.SaveToSession(AContext.Session);
-
-        for SessionPair in SessionData do
-          AContext.Session[SessionPair.Key] := SessionPair.Value;
-
-        AContext.Response.StatusCode := HTTP_STATUS.OK;
-        AContext.Response.CustomHeaders.Values['X-LOGOUT-URL'] := FLoginUrl;
-        AContext.Response.CustomHeaders.Values['X-LOGOUT-METHOD'] := 'DELETE';
-        AContext.Response.ContentType := TMVCMediaType.APPLICATION_JSON;
-        AContext.Response.RawWebResponse.Content := '{"status":"OK"}';
-
-        AHandled := True;
-      finally
-        SessionData.Free;
+      IsValid := False;
+      FAuthenticationHandler.OnAuthentication(UserName, Password, RolesList, IsValid, SessionData);
+      if not IsValid then
+      begin
+        SendResponse(AContext, AHandled);
+        Exit;
       end;
+
+      AContext.LoggedUser.Roles.AddRange(RolesList);
+      AContext.LoggedUser.UserName := UserName;
+      AContext.LoggedUser.LoggedSince := Now;
+      AContext.LoggedUser.Realm := 'custom';
+      AContext.LoggedUser.SaveToSession(AContext.Session);
+
+      for SessionPair in SessionData do
+        AContext.Session[SessionPair.Key] := SessionPair.Value;
+
+      AContext.Response.StatusCode := HTTP_STATUS.OK;
+      AContext.Response.CustomHeaders.Values['X-LOGOUT-URL'] := FLoginUrl;
+      AContext.Response.CustomHeaders.Values['X-LOGOUT-METHOD'] := 'DELETE';
+      AContext.Response.ContentType := TMVCMediaType.APPLICATION_JSON;
+      AContext.Response.RawWebResponse.Content := '{"status":"OK"}';
+
+      AHandled := True;
     finally
-      RolesList.Free;
+      SessionData.Free;
     end;
   finally
-    Jo.Free;
+    RolesList.Free;
   end;
 end;
 

@@ -130,6 +130,7 @@ begin
     else
     begin
       Render(TBytesStream.Create(TEncoding.ANSI.GetBytes(lOutput.Items[2])), True);
+      ContentCharset := '';
     end;
     lStatusPieces := string(lOutput.Items[4]).Split([':']);
     ResponseStatus(StrToInt(lStatusPieces[0]), lStatusPieces[1]);
